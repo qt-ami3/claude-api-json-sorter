@@ -25,7 +25,7 @@ VALUES (1, 'Betta July', 'Devpulse: Bamboo Utensil Holder ($93.18), Feednation: 
 Requirements:
   - Parse the income field (remove $ sign and convert to number for comparison)
   - Parse the product Price field (remove $ sign and convert to number for comparison)
-  - For each client, list ALL products they can afford in a comma-separated format
+  - For each client, list ALL products they can economically afford (consider cost of living, income, location), in a comma-separated format
   - Include company name and product name with price
   - Create the table schema at the top of the SQL file
   - Make sure the SQL is valid and can be executed directly

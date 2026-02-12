@@ -8,6 +8,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"path/filepath"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	_ "github.com/go-sql-driver/mysql"
@@ -29,6 +30,7 @@ type Client struct {
 	ShopingFor string `gorm:"column:shopingFor"`
 }
 
+
 func main() {
 	ctx := context.Background()
 
@@ -36,6 +38,15 @@ func main() {
 		fmt.Println("Error: ANTHROPIC_API_KEY environment variable not set")
 		return
 	}
+
+	defer func() { // Ensure cleanup happens at the end.
+		fmt.Println("\nCleaning up temporary files in ./bin...")
+		if err := cleanupBinDirectory(); err != nil {
+			fmt.Printf("Warning: error during cleanup: %v\n", err)
+		} else {
+			fmt.Println("Cleanup completed successfully!")
+		}
+	}()
 
 	// 1. Connect to MySQL database
 	fmt.Println("Connecting to MySQL database...")
@@ -98,43 +109,42 @@ func main() {
 	}
 	fmt.Printf("Loaded %d products\n", len(companies))
 
-	// 4. Create temporary files for upload to Claude
-	fmt.Println("Creating temporary files for Claude...")
+	// 4. Convert JSON files to plaintext in ./bin directory
+	fmt.Println("Converting JSON files to plaintext...")
 	
-	clientsFile, err := os.CreateTemp("", "clients-*.json") // Write clients JSON to temp file.
+	clientsTxtPath, err := convertJSONToText(clientsJSON, "clients")
 	if err != nil {
-		fmt.Printf("Error creating temp file: %v\n", err)
+		fmt.Printf("Error converting clients to text: %v\n", err)
 		return
 	}
-	defer os.Remove(clientsFile.Name())
+	fmt.Printf("Created: %s\n", clientsTxtPath)
+	
+	productsTxtPath, err := convertJSONToText(companiesData, "products")
+	if err != nil {
+		fmt.Printf("Error converting products to text: %v\n", err)
+		return
+	}
+	fmt.Printf("Created: %s\n", productsTxtPath)
+
+	// 5. Open the text files for upload
+	clientsFile, err := os.Open(clientsTxtPath)
+	if err != nil {
+		fmt.Printf("Error opening clients text file: %v\n", err)
+		return
+	}
 	defer clientsFile.Close()
-	
-	_, err = clientsFile.Write(clientsJSON)
-	if err != nil {
-		fmt.Printf("Error writing clients file: %v\n", err)
-		return
-	}
-	clientsFile.Seek(0, 0) // Reset to beginning.
 
-	productsFile, err := os.CreateTemp("", "products-*.json") // Write products JSON to temp file.
+	productsFile, err := os.Open(productsTxtPath)
 	if err != nil {
-		fmt.Printf("Error creating temp file: %v\n", err)
+		fmt.Printf("Error opening products text file: %v\n", err)
 		return
 	}
-	defer os.Remove(productsFile.Name())
 	defer productsFile.Close()
-	
-	_, err = productsFile.Write(companiesData)
-	if err != nil {
-		fmt.Printf("Error writing products file: %v\n", err)
-		return
-	}
-	productsFile.Seek(0, 0) // Reset to beginning.
 
-	// 5. Upload files to Claude
+	// 6. Upload files to Claude
 	fmt.Println("Uploading clients data to Claude...")
 	clientsUpload, err := client.Beta.Files.Upload(ctx, anthropic.BetaFileUploadParams{
-		File:  anthropic.File(clientsFile, "clients.json", "application/json"),
+		File:  anthropic.File(clientsFile, "clients.txt", "text/plain"),
 		Betas: []anthropic.AnthropicBeta{anthropic.AnthropicBetaFilesAPI2025_04_14},
 	})
 	if err != nil {
@@ -144,7 +154,7 @@ func main() {
 
 	fmt.Println("Uploading products data to Claude...")
 	productsUpload, err := client.Beta.Files.Upload(ctx, anthropic.BetaFileUploadParams{
-		File:  anthropic.File(productsFile, "products.json", "application/json"),
+		File:  anthropic.File(productsFile, "products.txt", "text/plain"),
 		Betas: []anthropic.AnthropicBeta{anthropic.AnthropicBetaFilesAPI2025_04_14},
 	})
 	if err != nil {
@@ -156,7 +166,7 @@ func main() {
 	fmt.Println(promptAPI)
 	fmt.Println("\nSending request to Claude...")
 
-	// 6. Send request to Claude
+	// 7. Send request to Claude
 	message, err := client.Beta.Messages.New(ctx, anthropic.BetaMessageNewParams{
 		MaxTokens: 16000,
 		Messages: []anthropic.BetaMessageParam{
@@ -179,7 +189,7 @@ func main() {
 		return
 	}
 
-	// 7. Extract response from Claude
+	// 8. Extract response from Claude
 	var responseText string
 	for _, content := range message.Content {
 		responseText += content.Text
@@ -188,7 +198,7 @@ func main() {
 	fmt.Println("\n[Claude's Response]:")
 	fmt.Println(responseText[:min(500, len(responseText))] + "...")
 
-	// 8. Extract SQL from response (remove markdown code blocks if present)
+	// 9. Extract SQL from response (remove markdown code blocks if present)
 	sqlContent := extractSQL(responseText)
 
 	// 10. Save to output directory
@@ -200,7 +210,7 @@ func main() {
 		return
 	}
 
-	// Write SQL file
+	// 11. Write SQL file
 	outputPath := "./output/client_affordable_products.sql"
 	err = os.WriteFile(outputPath, []byte(sqlContent), 0644)
 	if err != nil {
