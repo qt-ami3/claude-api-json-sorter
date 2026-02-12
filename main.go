@@ -8,10 +8,10 @@ import (
 	"context"
 	"encoding/json"
 
+  "gorm.io/gorm"
+  "gorm.io/driver/mysql"
 	"github.com/anthropics/anthropic-sdk-go"
 )
-
-
 
 func main() {
 	jsonFile, err := os.Open(./JSONS/MOCK_DATA.json)
