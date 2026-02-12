@@ -1,0 +1,7 @@
+Start func main & open SQL DB -> send ./JSONS/MOCK_DATA.json & SQL DB to claude. -> Request claude to add new line to 
+  seperate SQL file with firstName, lastName, and any products the person can economically afford.
+  
+  example:
+
+    (id, firstName, lastName): (company1, product, (company2, product)
+    (id, firstName, lastName): (ompany1, product), (company2, product)

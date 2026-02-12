@@ -1,3 +1,15 @@
+DROP TABLE IF EXISTS MOCK_DATA;
+
+CREATE TABLE IF NOT EXISTS MOCK_DATA (
+    id INT PRIMARY KEY,
+    firstName VARCHAR(100),
+    LastName VARCHAR(100),
+    location VARCHAR(100),
+    income VARCHAR(20),
+    shopingFor VARCHAR(100)
+);
+
+-- Then your INSERT statements...
 insert into MOCK_DATA (id, firstName, LastName, location, income, shopingFor) values (1, 'Betta', 'July', 'San Luis', '$64776.79', 'Food - Seafood');
 insert into MOCK_DATA (id, firstName, LastName, location, income, shopingFor) values (2, 'Noach', 'Blaksley', 'Troyes', '$124713.14', 'Health');
 insert into MOCK_DATA (id, firstName, LastName, location, income, shopingFor) values (3, 'Aggi', 'Reeveley', 'Grabów', '$97846.65', 'Food - Bread');
