@@ -1,6 +1,11 @@
 package main
 import (	
+	"os"
+	"fmt"
 	"strings"
+	"strconv"
+	"path/filepath"
+	"encoding/json"
 )
 
 func extractSQL(response string) string { // extractSQL removes markdown code blocks and extracts pure SQL.
@@ -58,4 +63,21 @@ func convertJSONToText(jsonData []byte, filename string) (string, error) {// con
 	}
 	
 	return txtPath, nil
+}
+
+func getUserInput() (int, error) { // getUserInput prompts the user to enter a client ID.
+	var clientID string
+	fmt.Print("\nEnter Client ID to process (or press Enter to process all clients): ")
+	fmt.Scanln(&clientID)
+	
+	if clientID == "" { // If empty, return -1 to indicate "process all".
+		return -1, nil
+	}
+	
+	id, err := strconv.Atoi(clientID) // Convert to integer.
+	if err != nil {
+		return 0, fmt.Errorf("invalid client ID: %v", err)
+	}
+	
+	return id, nil
 }

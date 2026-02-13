@@ -8,7 +8,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"path/filepath"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	_ "github.com/go-sql-driver/mysql"
@@ -22,14 +21,13 @@ type Company struct {
 }
 
 type Client struct {
-	ID         int    `gorm:"column:id;primaryKey"`
-	FirstName  string `gorm:"column:firstName"`
-	LastName   string `gorm:"column:LastName"`
-	Location   string `gorm:"column:location"`
-	Income     string `gorm:"column:income"`
-	ShopingFor string `gorm:"column:shopingFor"`
+	ID         int    `json:"id"`
+	FirstName  string `json:"firstName"`
+	LastName   string `json:"lastName"`
+	Location   string `json:"location"`
+	Income     string `json:"income"`
+	ShopingFor string `json:"shopingFor"`
 }
-
 
 func main() {
 	ctx := context.Background()
@@ -66,16 +64,34 @@ func main() {
 	}
 	fmt.Println("Successfully connected to database!")
 
-	// 2. Query all clients from database
-	fmt.Println("Querying clients from database...")
-	rows, err := db.Query("SELECT id, firstName, LastName, location, income, shopingFor FROM MOCK_DATA")
+	// 2. Get user input for client ID
+	targetClientID, err := getUserInput()
+	if err != nil {
+		fmt.Printf("Error getting user input: %v\n", err)
+		return
+	}
+
+	// 3. Query client(s) from database
+	var clients []Client
+	var query string
+	var rows *sql.Rows
+	
+	if targetClientID == -1 {
+		fmt.Println("Processing all clients...") // Process all clients.
+		query = "SELECT id, firstName, LastName, location, income, shopingFor FROM MOCK_DATA"
+		rows, err = db.Query(query)
+	} else {
+		fmt.Printf("Processing client ID: %d...\n", targetClientID) // Process specific client.
+		query = "SELECT id, firstName, LastName, location, income, shopingFor FROM MOCK_DATA WHERE id = ?"
+		rows, err = db.Query(query, targetClientID)
+	}
+	
 	if err != nil {
 		fmt.Printf("Error querying database: %v\n", err)
 		return
 	}
 	defer rows.Close()
 
-	var clients []Client
 	for rows.Next() {
 		var client Client
 		err := rows.Scan(&client.ID, &client.FirstName, &client.LastName, &client.Location, &client.Income, &client.ShopingFor)
@@ -85,7 +101,17 @@ func main() {
 		}
 		clients = append(clients, client)
 	}
-	fmt.Printf("Loaded %d clients from database\n", len(clients))
+	
+	if len(clients) == 0 {
+		if targetClientID != -1 {
+			fmt.Printf("Error: Client with ID %d not found in database\n", targetClientID)
+		} else {
+			fmt.Println("Error: No clients found in database")
+		}
+		return
+	}
+	
+	fmt.Printf("Loaded %d client(s) from database\n", len(clients))
 
 	clientsJSON, err := json.MarshalIndent(clients, "", "  ") // Convert clients to JSON for sending to Claude.
 	if err != nil {
@@ -93,7 +119,7 @@ func main() {
 		return
 	}
 
-	// 3. Read companies/products JSON file
+	// 4. Read companies/products JSON file
 	fmt.Println("Reading products JSON file...")
 	companiesData, err := os.ReadFile("./JSONS/MOCK_DATA.json")
 	if err != nil {
@@ -109,7 +135,7 @@ func main() {
 	}
 	fmt.Printf("Loaded %d products\n", len(companies))
 
-	// 4. Convert JSON files to plaintext in ./bin directory
+	// 5. Convert JSON files to plaintext in ./bin directory
 	fmt.Println("Converting JSON files to plaintext...")
 	
 	clientsTxtPath, err := convertJSONToText(clientsJSON, "clients")
@@ -126,7 +152,7 @@ func main() {
 	}
 	fmt.Printf("Created: %s\n", productsTxtPath)
 
-	// 5. Open the text files for upload
+	// 6. Open the text files for upload
 	clientsFile, err := os.Open(clientsTxtPath)
 	if err != nil {
 		fmt.Printf("Error opening clients text file: %v\n", err)
@@ -141,7 +167,7 @@ func main() {
 	}
 	defer productsFile.Close()
 
-	// 6. Upload files to Claude
+	// 7. Upload files to Claude
 	fmt.Println("Uploading clients data to Claude...")
 	clientsUpload, err := client.Beta.Files.Upload(ctx, anthropic.BetaFileUploadParams{
 		File:  anthropic.File(clientsFile, "clients.txt", "text/plain"),
@@ -166,7 +192,7 @@ func main() {
 	fmt.Println(promptAPI)
 	fmt.Println("\nSending request to Claude...")
 
-	// 7. Send request to Claude
+	// 8. Send request to Claude
 	message, err := client.Beta.Messages.New(ctx, anthropic.BetaMessageNewParams{
 		MaxTokens: 16000,
 		Messages: []anthropic.BetaMessageParam{
@@ -189,7 +215,7 @@ func main() {
 		return
 	}
 
-	// 8. Extract response from Claude
+	// 9. Extract response from Claude
 	var responseText string
 	for _, content := range message.Content {
 		responseText += content.Text
@@ -198,10 +224,10 @@ func main() {
 	fmt.Println("\n[Claude's Response]:")
 	fmt.Println(responseText[:min(500, len(responseText))] + "...")
 
-	// 9. Extract SQL from response (remove markdown code blocks if present)
+	// 10. Extract SQL from response (remove markdown code blocks if present)
 	sqlContent := extractSQL(responseText)
 
-	// 10. Save to output directory
+	// 11. Save to output directory
 	fmt.Println("\nSaving SQL file to output directory...")
 	
 	err = os.MkdirAll("./output", 0755) // Create output directory if it doesn't exist.
@@ -210,14 +236,20 @@ func main() {
 		return
 	}
 
-	// 11. Write SQL file
-	outputPath := "./output/client_affordable_products.sql"
+	// 12. Write SQL file with appropriate naming
+	var outputPath string
+	if targetClientID == -1 {
+		outputPath = "./output/all_clients_affordable_products.sql"
+	} else {
+		outputPath = fmt.Sprintf("./output/client_%d_affordable_products.sql", targetClientID)
+	}
+	
 	err = os.WriteFile(outputPath, []byte(sqlContent), 0644)
 	if err != nil {
 		fmt.Printf("Error writing SQL file: %v\n", err)
 		return
 	}
 
-	fmt.Printf("\n Success! SQL file saved to: %s\n", outputPath)
-	fmt.Printf("Processed %d clients and %d products\n", len(clients), len(companies))
+	fmt.Printf("\n✓ Success! SQL file saved to: %s\n", outputPath)
+	fmt.Printf("Processed %d client(s) and %d products\n", len(clients), len(companies))
 }
